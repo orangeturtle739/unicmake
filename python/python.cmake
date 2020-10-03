@@ -3,18 +3,136 @@
 # That would be ideal, but apparently is too new
 set(_THIS_MODULE_BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
-function(unicmake_python)
-    cmake_parse_arguments(UNIBUILD_PYTHON "" "PACKAGE_NAME;SETUP_STAMP" "" ${ARGN})
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+find_program(BLACK black REQUIRED)
+find_program(FLAKE8 flake8 REQUIRED)
+find_program(MYPY mypy REQUIRED)
+find_program(ISORT isort REQUIRED)
 
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
-    find_program(BLACK black REQUIRED)
-    find_program(FLAKE8 flake8 REQUIRED)
-    find_program(MYPY mypy REQUIRED)
-    find_program(ISORT isort REQUIRED)
-    find_program(DIRSTAMP dirstamp REQUIRED)
+function(unicmake_python_black CONTENT_DIR CONTENT_STAMP OUTVAR FORMAT_TARGET)
+    set(DIR ${CMAKE_CURRENT_SOURCE_DIR}/${CONTENT_DIR})
+    set(OUT ${CMAKE_CURRENT_BINARY_DIR}/${CONTENT_DIR}/black.stamp)
+    set(${OUTVAR} ${OUT} PARENT_SCOPE)
+    add_custom_command(
+        COMMAND ${BLACK} --check --diff --exclude "" .
+        COMMAND touch ${OUT}
+        OUTPUT ${OUT}
+        WORKING_DIRECTORY ${DIR}
+        DEPENDS ${CONTENT_STAMP}
+        VERBATIM
+    )
+    add_custom_target(${FORMAT_TARGET}
+        COMMAND ${BLACK} --exclude "" .
+        WORKING_DIRECTORY ${DIR}
+        VERBATIM
+    )
+endfunction()
+
+function(unicmake_python_isort CONTENT_DIR CONTENT_STAMP OUTVAR FORMAT_TARGET)
+    set(DIR ${CMAKE_CURRENT_SOURCE_DIR}/${CONTENT_DIR})
+    set(OUT ${CMAKE_CURRENT_BINARY_DIR}/${CONTENT_DIR}/isort.stamp)
+    set(${OUTVAR} ${OUT} PARENT_SCOPE)
+
+    set(CONFIG_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    set(CONFIG_FILE ${CONFIG_DIR}/.isort.cfg)
+    add_custom_command(
+        COMMAND ${ISORT} --check --settings-path ${CONFIG_DIR}
+        COMMAND touch ${OUT}
+        OUTPUT ${OUT}
+        WORKING_DIRECTORY ${DIR}
+        DEPENDS ${CONTENT_STAMP} ${CONFIG_FILE}
+        VERBATIM
+    )
+    add_custom_target(${FORMAT_TARGET}
+        COMMAND ${ISORT} --apply --settings-path ${CONFIG_DIR}
+        WORKING_DIRECTORY ${DIR}
+        VERBATIM
+    )
+endfunction()
+
+function(unicmake_python_flake8 CONTENT_DIR CONTENT_STAMP OUTVAR)
+    set(DIR ${CMAKE_CURRENT_SOURCE_DIR}/${CONTENT_DIR})
+    set(OUT ${CMAKE_CURRENT_BINARY_DIR}/${CONTENT_DIR}/flake8.stamp)
+    set(${OUTVAR} ${OUT} PARENT_SCOPE)
+
+    set(CONFIG_FILE ${CMAKE_CURRENT_SOURCE_DIR}/.flake8)
+    add_custom_command(
+        COMMAND ${FLAKE8} --config=${CONFIG_FILE} .
+        COMMAND touch ${OUT}
+        OUTPUT ${OUT}
+        WORKING_DIRECTORY ${DIR}
+        DEPENDS ${CONTENT_STAMP} ${CONFIG_FILE}
+        VERBATIM
+    )
+endfunction()
+
+function(unicmake_python_mypy CONTENT_DIR CONTENT_STAMP MYPYPATH_EXTRA OUTVAR)
+    set(DIR ${CMAKE_CURRENT_SOURCE_DIR}/${CONTENT_DIR})
+    set(OUTDIR ${CMAKE_CURRENT_BINARY_DIR}/${CONTENT_DIR})
+    set(OUT ${OUTDIR}/mypy.stamp)
+    set(${OUTVAR} ${OUT} PARENT_SCOPE)
+
+    set(CONFIG_FILE ${CMAKE_CURRENT_SOURCE_DIR}/.mypy.ini)
+    add_custom_command(
+        COMMAND ${CMAKE_COMMAND} -E env MYPYPATH=$ENV{MYPYPATH}:${MYPYPATH_EXTRA} ${MYPY} --config-file ${CONFIG_FILE} --cache-dir ${OUTDIR}/.mypy_cache .
+        COMMAND touch ${OUT}
+        OUTPUT ${OUT}
+        WORKING_DIRECTORY ${DIR}
+        DEPENDS ${CONTENT_STAMP} ${CONFIG_FILE}
+        VERBATIM
+    )
+endfunction()
+
+function(unicmake_python_build ROOT SRC MYPYPATH_EXTRA LINT_TARGET FORMAT_TARGET)
+    unicmake_content_stamp(${SRC} SRCSTAMP)
+    unicmake_python_black(${ROOT} ${SRCSTAMP} BLACK_STAMP ${FORMAT_TARGET}_BLACK)
+    unicmake_python_isort(${ROOT} ${SRCSTAMP} ISORT_STAMP ${FORMAT_TARGET}_ISORT)
+    unicmake_python_flake8(${ROOT} ${SRCSTAMP} FLAKE8_STAMP)
+    unicmake_python_mypy(${ROOT} ${SRCSTAMP} "${MYPYPATH_EXTRA}" MYPY_STAMP)
+
+    add_custom_target(${LINT_TARGET}
+        DEPENDS
+            ${BLACK_STAMP}
+            ${ISORT_STAMP}
+            ${FLAKE8_STAMP}
+            ${MYPY_STAMP}
+    )
+
+    add_dependencies(${FORMAT_TARGET}_ISORT ${FORMAT_TARGET}_ISORT)
+    add_custom_target(${FORMAT_TARGET}
+        DEPENDS ${FORMAT_TARGET}_ISORT ${FORMAT_TARGET}_BLACK
+    )
+endfunction()
+
+function(unicmake_setuppy ACTION OUTVAR)
+    set(INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/target)
+    set(FULL_SITEDIR ${INSTALL_PREFIX}/${SITEDIR})
+    set(OUTDIR ${CMAKE_CURRENT_BINARY_DIR}/setup.py)
+    set(OUT ${OUTDIR}/${ACTION}.stamp)
+    set(${OUTVAR} ${OUT} PARENT_SCOPE)
+
+    add_custom_command(
+        COMMAND rm -rf ${OUTDIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${OUTDIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${FULL_SITEDIR}
+        COMMAND
+            ${CMAKE_COMMAND} -E env PYTHONPATH=$ENV{PYTHONPATH}:${FULL_SITEDIR} ${Python3_EXECUTABLE} setup.py ${ACTION} --prefix ${INSTALL_PREFIX}
+        COMMAND touch ${OUT}
+        OUTPUT ${OUT}
+        DEPENDS
+            ${UNIBUILD_PYTHON_SETUP_STAMP}
+        BYPRODUCTS
+            ${INSTALL_PREFIX}
+            ${CMAKE_CURRENT_SOURCE_DIR}/dist
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        VERBATIM
+    )
+endfunction()
+
+function(unicmake_python)
+    cmake_parse_arguments(UNIBUILD_PYTHON "" "PACKAGE_NAME;SETUP_STAMP" "ROOTS" ${ARGN})
 
     set(SITEDIR lib/python${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}/site-packages)
-    set(SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/${UNIBUILD_PYTHON_PACKAGE_NAME})
 
     # This 2 phase process is to put execute permissions on the pyrun script
     # The extra directory is because COPY can't rename a file
@@ -29,111 +147,20 @@ function(unicmake_python)
         FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
     )
 
-    add_custom_target(src_stamp
-        ALL
-        COMMAND ${DIRSTAMP} ${SRC}
-        BYPRODUCTS ${SRC}.stamp
-        VERBATIM
-    )
-    add_custom_command(
-        COMMAND ${BLACK} --check --diff --exclude "" .
-        COMMAND touch ${CMAKE_CURRENT_SOURCE_DIR}/src/black.stamp
-        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/src/black.stamp
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src
-        DEPENDS ${SRC}.stamp
-        VERBATIM
-    )
-    add_custom_command(
-        COMMAND ${ISORT} --check --settings-path ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMAND touch ${CMAKE_CURRENT_SOURCE_DIR}/src/isort.stamp
-        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/src/isort.stamp
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src
-        DEPENDS
-            ${SRC}.stamp
-            ${CMAKE_CURRENT_SOURCE_DIR}/.isort.cfg
-        VERBATIM
-    )
-    add_custom_command(
-        COMMAND ${FLAKE8} --config=${CMAKE_CURRENT_SOURCE_DIR}/.flake8 .
-        COMMAND touch ${CMAKE_CURRENT_SOURCE_DIR}/src/flake8.stamp
-        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/src/flake8.stamp
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src
-        DEPENDS
-            ${SRC}.stamp
-            ${CMAKE_CURRENT_SOURCE_DIR}/.flake8
-        VERBATIM
-    )
-    add_custom_command(
-        COMMAND ${MYPY} --config-file ${CMAKE_CURRENT_SOURCE_DIR}/.mypy.ini -p ${UNIBUILD_PYTHON_PACKAGE_NAME}
-        COMMAND touch ${CMAKE_CURRENT_SOURCE_DIR}/src/mypy.stamp
-        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/src/mypy.stamp
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src
-        DEPENDS
-            ${SRC}.stamp
-            ${CMAKE_CURRENT_SOURCE_DIR}/.mypy.ini
-        VERBATIM
-    )
+    unicmake_python_build(src src/${UNIBUILD_PYTHON_PACKAGE_NAME} "" lint_src format_src)
+    add_custom_target(lint DEPENDS lint_src)
+    add_custom_target(format DEPENDS format_src)
+    foreach(ROOT ${UNIBUILD_PYTHON_ROOTS})
+        unicmake_python_build(${ROOT} ${ROOT} ${CMAKE_CURRENT_SOURCE_DIR}/src lint_${ROOT} format_${ROOT})
+        add_dependencies(lint lint_${ROOT})
+        add_dependencies(format format_${ROOT})
+    endforeach()
 
-    add_custom_target(lint
-        DEPENDS
-            ${SRC}
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/black.stamp
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/isort.stamp
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/flake8.stamp
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/mypy.stamp
-        VERBATIM
-    )
+    unicmake_setuppy(develop DEVELOP_STAMP)
+    add_custom_target(develop DEPENDS ${DEVELOP_STAMP} lint)
 
-    set(INSTALL_TOOL ${_THIS_MODULE_BASE_DIR}/install.py)
-
-    add_custom_command(
-        COMMAND
-            ${Python3_EXECUTABLE} ${INSTALL_TOOL} --prefix ${CMAKE_CURRENT_BINARY_DIR}/target --python ${Python3_EXECUTABLE} --site-packages-dir ${SITEDIR}
-        COMMAND touch ${CMAKE_CURRENT_SOURCE_DIR}/src/install.stamp
-        OUTPUT touch ${CMAKE_CURRENT_SOURCE_DIR}/src/install.stamp
-        DEPENDS
-            lint
-            ${UNIBUILD_PYTHON_SETUP_STAMP}
-        BYPRODUCTS
-            ${CMAKE_CURRENT_BINARY_DIR}/target
-            ${CMAKE_CURRENT_SOURCE_DIR}/dist
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        VERBATIM
-    )
-
-    add_custom_target(build_python
-        ALL
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/install.stamp
-        VERBATIM
-    )
-
-    add_custom_command(
-        COMMAND
-            ${Python3_EXECUTABLE} ${INSTALL_TOOL} --prefix ${CMAKE_CURRENT_BINARY_DIR}/target --python ${Python3_EXECUTABLE} --site-packages-dir ${SITEDIR} --develop
-        COMMAND touch ${CMAKE_CURRENT_SOURCE_DIR}/src/develop.stamp
-        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/src/develop.stamp
-        DEPENDS
-            ${UNIBUILD_PYTHON_SETUP_STAMP}
-        BYPRODUCTS
-            ${CMAKE_CURRENT_BINARY_DIR}/target
-            ${CMAKE_CURRENT_SOURCE_DIR}/dist
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        VERBATIM
-    )
-
-    add_custom_target(develop
-        DEPENDS
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/develop.stamp
-            lint
-        VERBATIM
-    )
-
-    add_custom_target(format
-        COMMAND ${BLACK} --exclude "" .
-        COMMAND ${ISORT} --apply --settings-path ${CMAKE_CURRENT_SOURCE_DIR}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src
-        VERBATIM
-    )
+    unicmake_setuppy(install INSTALL_STAMP)
+    add_custom_target(python_default ALL DEPENDS ${INSTALL_STAMP} lint)
 
     install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/target/
         DESTINATION ${CMAKE_INSTALL_PREFIX}
