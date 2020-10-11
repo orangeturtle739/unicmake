@@ -104,7 +104,7 @@ function(unicmake_python_build ROOT SRC MYPYPATH_EXTRA LINT_TARGET FORMAT_TARGET
     )
 endfunction()
 
-function(unicmake_setuppy ACTION OUTVAR)
+function(unicmake_setuppy ACTION PACKAGE_NAME OUTVAR)
     set(INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/target)
     set(FULL_SITEDIR ${INSTALL_PREFIX}/${SITEDIR})
     set(OUTDIR ${CMAKE_CURRENT_BINARY_DIR}/setup.py)
@@ -124,6 +124,7 @@ function(unicmake_setuppy ACTION OUTVAR)
         BYPRODUCTS
             ${INSTALL_PREFIX}
             ${CMAKE_CURRENT_SOURCE_DIR}/dist
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/${PACKAGE_NAME}.egg-info
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         VERBATIM
     )
@@ -156,10 +157,10 @@ function(unicmake_python)
         add_dependencies(format format_${ROOT})
     endforeach()
 
-    unicmake_setuppy(develop DEVELOP_STAMP)
+    unicmake_setuppy(develop ${UNIBUILD_PYTHON_PACKAGE_NAME} DEVELOP_STAMP)
     add_custom_target(develop DEPENDS ${DEVELOP_STAMP} lint)
 
-    unicmake_setuppy(install INSTALL_STAMP)
+    unicmake_setuppy(install ${UNIBUILD_PYTHON_PACKAGE_NAME} INSTALL_STAMP)
     add_custom_target(python_default ALL DEPENDS ${INSTALL_STAMP} lint)
 
     install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/target/
