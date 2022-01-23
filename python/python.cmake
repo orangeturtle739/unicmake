@@ -36,7 +36,7 @@ function(unicmake_python_isort CONTENT_DIR CONTENT_STAMP OUTVAR FORMAT_TARGET)
     set(CONFIG_DIR ${CMAKE_CURRENT_SOURCE_DIR})
     set(CONFIG_FILE ${CONFIG_DIR}/.isort.cfg)
     add_custom_command(
-        COMMAND ${ISORT} --check --settings-path ${CONFIG_DIR}
+        COMMAND ${ISORT} --check --settings-path ${CONFIG_DIR} ${DIR}
         COMMAND touch ${OUT}
         OUTPUT ${OUT}
         WORKING_DIRECTORY ${DIR}
@@ -44,7 +44,7 @@ function(unicmake_python_isort CONTENT_DIR CONTENT_STAMP OUTVAR FORMAT_TARGET)
         VERBATIM
     )
     add_custom_target(${FORMAT_TARGET}
-        COMMAND ${ISORT} --apply --settings-path ${CONFIG_DIR}
+        COMMAND ${ISORT} --settings-path ${CONFIG_DIR} ${DIR}
         WORKING_DIRECTORY ${DIR}
         VERBATIM
     )
