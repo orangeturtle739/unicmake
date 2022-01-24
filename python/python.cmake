@@ -111,12 +111,19 @@ function(unicmake_setuppy ACTION PACKAGE_NAME OUTVAR)
     set(OUT ${OUTDIR}/${ACTION}.stamp)
     set(${OUTVAR} ${OUT} PARENT_SCOPE)
 
+    # sitecustomize.py is needed due to
+    # https://github.com/pypa/setuptools/issues/2612
+    # See also:
+    # https://github.com/pypa/setuptools/issues/2589
+    # https://github.com/pypa/setuptools/commit/cb962021c53b7130bf0a1792f75678efcc0724be#diff-edb74f28afd2515905b8e250003a801b34ace1931df0ea9ade39d10781c7168cR209-R213
     add_custom_command(
         COMMAND rm -rf ${OUTDIR}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${OUTDIR}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${FULL_SITEDIR}
         COMMAND
             ${CMAKE_COMMAND} -E env PYTHONPATH=$ENV{PYTHONPATH}:${FULL_SITEDIR} ${Python3_EXECUTABLE} setup.py ${ACTION} --prefix ${INSTALL_PREFIX}
+        COMMAND
+            ${CMAKE_COMMAND} -E copy ${_THIS_MODULE_BASE_DIR}/sitecustomize.py ${FULL_SITEDIR}
         COMMAND touch ${OUT}
         OUTPUT ${OUT}
         DEPENDS
