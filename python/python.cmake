@@ -104,7 +104,7 @@ function(unicmake_python_build ROOT SRC MYPYPATH_EXTRA LINT_TARGET FORMAT_TARGET
     )
 endfunction()
 
-function(unicmake_setuppy ACTION PACKAGE_NAME OUTVAR)
+function(unicmake_setuppy ACTION PACKAGE_NAME ARGS OUTVAR)
     set(INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/target)
     set(FULL_SITEDIR ${INSTALL_PREFIX}/${SITEDIR})
     set(OUTDIR ${CMAKE_CURRENT_BINARY_DIR}/setup.py)
@@ -121,7 +121,7 @@ function(unicmake_setuppy ACTION PACKAGE_NAME OUTVAR)
         COMMAND ${CMAKE_COMMAND} -E make_directory ${OUTDIR}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${FULL_SITEDIR}
         COMMAND
-            ${CMAKE_COMMAND} -E env PYTHONPATH=$ENV{PYTHONPATH}:${FULL_SITEDIR} ${Python3_EXECUTABLE} setup.py ${ACTION} --prefix ${INSTALL_PREFIX}
+        ${CMAKE_COMMAND} -E env PYTHONPATH=$ENV{PYTHONPATH}:${FULL_SITEDIR} ${Python3_EXECUTABLE} setup.py ${ACTION} --prefix ${INSTALL_PREFIX} ${ARGS} --record ${FULL_SITEDIR}/record.txt
         COMMAND
             ${CMAKE_COMMAND} -E copy ${_THIS_MODULE_BASE_DIR}/sitecustomize.py ${FULL_SITEDIR}
         COMMAND touch ${OUT}
@@ -164,10 +164,10 @@ function(unicmake_python)
         add_dependencies(format format_${ROOT})
     endforeach()
 
-    unicmake_setuppy(develop ${UNIBUILD_PYTHON_PACKAGE_NAME} DEVELOP_STAMP)
+    unicmake_setuppy(develop ${UNIBUILD_PYTHON_PACKAGE_NAME} "" DEVELOP_STAMP)
     add_custom_target(develop DEPENDS ${DEVELOP_STAMP} lint)
 
-    unicmake_setuppy(install ${UNIBUILD_PYTHON_PACKAGE_NAME} INSTALL_STAMP)
+    unicmake_setuppy(install ${UNIBUILD_PYTHON_PACKAGE_NAME} "--single-version-externally-managed" INSTALL_STAMP)
     add_custom_target(python_default ALL DEPENDS ${INSTALL_STAMP} lint)
 
     install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/target/
