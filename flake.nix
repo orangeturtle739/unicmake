@@ -5,11 +5,9 @@
   inputs.flake-utils.url = "github:numtide/flake-utils";
 
   outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachSystem
-    (flake-utils.lib.defaultSystems ++ [ "armv7l-linux" ]) (system:
-      let
-        pkgs = import nixpkgs { inherit system; };
-        unicmake = pkgs.stdenv.mkDerivation rec {
+    let
+      withPkgs = pkgs: {
+        packages.default = pkgs.stdenv.mkDerivation rec {
           name = "unicmake";
           src = self;
           phases = [ "unpackPhase" "buildPhase" ];
@@ -18,5 +16,12 @@
             cp -a . $out/lib/cmake/unicmake
           '';
         };
-      in { defaultPackage = unicmake; });
+      };
+    in (flake-utils.lib.eachSystem
+      (flake-utils.lib.defaultSystems ++ [ "armv7l-linux" ])
+      (system: withPkgs (import nixpkgs { inherit system; }))) // {
+        overlays.default = final: prev: {
+          unicmake = (withPkgs prev).packages.default;
+        };
+      };
 }
